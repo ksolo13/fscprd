@@ -132,16 +132,22 @@ if (-not $SkipUpload) {
                 Select-Object -First 1 -ExpandProperty FullName
         }
 
-        if ($SharePointSyncFolder -and (Test-Path $SharePointSyncFolder)) {
+        $folderOk = $false
+        if ($SharePointSyncFolder) {
+            try   { $folderOk = Test-Path -LiteralPath $SharePointSyncFolder -PathType Container }
+            catch { Write-Warning "Invalid -SharePointSyncFolder path: '$SharePointSyncFolder'" }
+        }
+
+        if ($folderOk) {
             foreach ($f in $exported) {
                 $dest = Join-Path $SharePointSyncFolder (Split-Path $f -Leaf)
-                if ((Test-Path $dest) -and
+                if ((Test-Path -LiteralPath $dest) -and
                     $Host.UI.PromptForChoice('SharePoint', "$(Split-Path $f -Leaf) already exists. Overwrite?",
                         [System.Management.Automation.Host.ChoiceDescription[]]@('&Yes', '&No'), 1) -ne 0) {
                     Write-Host "Skipped $dest"
                     continue
                 }
-                Copy-Item $f $dest -Force
+                Copy-Item -LiteralPath $f -Destination $dest -Force
                 Write-Host "Copied -> $dest"
             }
             Write-Host 'OneDrive will upload the files to SharePoint in the background.'
