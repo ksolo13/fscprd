@@ -7,6 +7,8 @@
     (Oracle.ManagedDataAccess.dll) and writes:
         HYP_<yyyyMMdd>.csv
         MCH_<yyyyMMdd>.csv
+    then asks whether to copy them to the SharePoint "Data integrity reports" folder
+    via its OneDrive-synced local folder.
 
 .EXAMPLE
     .\Export-AgphData.ps1 -UserName myuser -OutputDir D:\Extracts
@@ -25,7 +27,10 @@ param(
     [System.Management.Automation.PSCredential]$Credential,
     [string]$OutputDir  = (Get-Location).Path,
     [string]$DllPath    = "$PSScriptRoot\Oracle.ManagedDataAccess.dll",
-    [int]   $FetchSizeMB = 16
+    [int]   $FetchSizeMB = 16,
+    [string]$SharePointSyncFolder,                 # local OneDrive-synced path of "Data integrity reports"; auto-detected if omitted
+    [string]$SharePointUrl = 'https://banquelaurentienne.sharepoint.com/sites/TremblantDataintegrityreports/Documents%20partages/Data%20integrity%20reports',
+    [switch]$SkipUpload                            # no prompt, no copy (e.g. scheduled runs)
 )
 
 $ErrorActionPreference = 'Stop'
@@ -92,6 +97,7 @@ function Export-Query {
     return $rows
 }
 
+$exported = @()
 $conn = New-Object Oracle.ManagedDataAccess.Client.OracleConnection($connString)
 try {
     $conn.Open()
@@ -101,6 +107,7 @@ try {
         $file = Join-Path $OutputDir "$($name)_$stamp.csv"
         $count = Export-Query -Connection $conn -Sql $queries[$name] -Path $file
         Write-Host ("{0}: {1:N0} rows -> {2}" -f $name, $count, $file)
+        $exported += $file
     }
 }
 catch {
@@ -110,5 +117,40 @@ catch {
 finally {
     $conn.Dispose()
     $plainPwd = $null
+}
+
+# --- Copy to SharePoint (via OneDrive sync) -------------------------------------
+if (-not $SkipUpload) {
+    $fileList = ($exported | ForEach-Object { '  ' + (Split-Path $_ -Leaf) }) -join "`n"
+    $choice = $Host.UI.PromptForChoice('SharePoint',
+        "Copy these files to SharePoint 'Data integrity reports'?`n$fileList",
+        [System.Management.Automation.Host.ChoiceDescription[]]@('&Yes', '&No'), 1)
+
+    if ($choice -eq 0) {
+        if (-not $SharePointSyncFolder) {
+            $SharePointSyncFolder = Get-ChildItem $env:USERPROFILE -Directory -Recurse -Depth 3 -Filter 'Data integrity reports' -ErrorAction SilentlyContinue |
+                Select-Object -First 1 -ExpandProperty FullName
+        }
+
+        if ($SharePointSyncFolder -and (Test-Path $SharePointSyncFolder)) {
+            foreach ($f in $exported) {
+                $dest = Join-Path $SharePointSyncFolder (Split-Path $f -Leaf)
+                if ((Test-Path $dest) -and
+                    $Host.UI.PromptForChoice('SharePoint', "$(Split-Path $f -Leaf) already exists. Overwrite?",
+                        [System.Management.Automation.Host.ChoiceDescription[]]@('&Yes', '&No'), 1) -ne 0) {
+                    Write-Host "Skipped $dest"
+                    continue
+                }
+                Copy-Item $f $dest -Force
+                Write-Host "Copied -> $dest"
+            }
+            Write-Host 'OneDrive will upload the files to SharePoint in the background.'
+        }
+        else {
+            Write-Warning "Synced SharePoint folder not found. In SharePoint click 'Sync' on the library, or pass -SharePointSyncFolder. Opening the folder for manual upload."
+            Start-Process $SharePointUrl
+            Invoke-Item $OutputDir
+        }
+    }
 }
 exit 0
