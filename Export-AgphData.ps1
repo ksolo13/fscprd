@@ -3,7 +3,7 @@
     Exports AGPH_SYST.HYP and AGPH_SYST.MCH rows to pipe-delimited files (no header).
 
 .DESCRIPTION
-    Connects to Oracle 172.20.3.16:1526 (SID AGPHPROD) using the ODP.NET Managed Driver
+    Connects to Oracle 10.153.128.14:1526 (SID AGPHPROD) using the ODP.NET Managed Driver
     (Oracle.ManagedDataAccess.dll) and writes:
         HYP_<yyyyMMdd>.csv
         MCH_<yyyyMMdd>.csv
@@ -17,7 +17,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$DbHost     = '172.20.3.16',
+    [string]$DbHost     = '10.153.128.14',
     [int]   $Port       = 1526,
     [string]$Sid        = 'AGPHPROD',
     [switch]$UseServiceName,                       # use SERVICE_NAME instead of SID
