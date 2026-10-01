@@ -39,9 +39,10 @@ $plainPwd = $Credential.GetNetworkCredential().Password
 
 # --- Load driver --------------------------------------------------------------
 if (-not (Test-Path $DllPath)) {
-    throw "Oracle.ManagedDataAccess.dll not found at '$DllPath'. Install the ODP.NET Managed Driver (NuGet: Oracle.ManagedDataAccess) or pass -DllPath."
+    throw "Oracle.ManagedDataAccess.dll not found at '$DllPath'. Get it from NuGet package Oracle.ManagedDataAccess 19.18.0 (lib\net40) or pass -DllPath."
 }
-Add-Type -Path $DllPath
+# LoadFrom (not Add-Type): Add-Type enumerates every type and fails if optional dependencies are missing
+[void][System.Reflection.Assembly]::LoadFrom((Resolve-Path $DllPath).Path)
 
 # --- Connection ---------------------------------------------------------------
 $connectKey = if ($UseServiceName) { 'SERVICE_NAME' } else { 'SID' }
