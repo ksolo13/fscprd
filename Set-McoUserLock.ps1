@@ -7,9 +7,10 @@
     (Oracle.ManagedDataAccess.dll).
 
     Option 1 - Disable active users
-        For every user except the excluded codes (default PATKE01, CICAM01, KHARI01):
-            NBRE_TENTATIVE   = 3  only where current value is 0
-            COMPTE_VEROUILLE = 1  only where current value is 0
+        Active user = NBRE_TENTATIVE = 0 AND COMPTE_VEROUILLE = 0.
+        For every active user except the excluded codes (default PATKE01, CICAM01, KHARI01):
+            NBRE_TENTATIVE   = 3
+            COMPTE_VEROUILLE = 1
         Original values of every changed row are written to the backup CSV BEFORE commit.
         Refuses to run if the backup file already exists (would lose original values).
 
@@ -21,9 +22,19 @@
 
     Each option runs in a single transaction: all rows commit or none do.
 
+    Credentials
+        Stored in a .cred file (default MCODEV.cred next to the script) via Export-Clixml.
+        The password is encrypted with Windows DPAPI: only the same Windows user on the
+        same machine can decrypt it. First run prompts and saves; later runs load silently.
+        Use -ResetCred to re-prompt and overwrite (e.g. after a password change).
+
 .EXAMPLE
     .\Set-McoUserLock.ps1 -UserName MCO001
-    (menu prompts for option 1 or 2, then for the password)
+    (menu prompts for option 1 or 2; password prompted once, then saved to MCODEV.cred)
+
+.EXAMPLE
+    .\Set-McoUserLock.ps1 -ResetCred
+    (re-prompt for credentials and overwrite the .cred file)
 
 .EXAMPLE
     .\Set-McoUserLock.ps1 -Option 1 -UserName MCO001 -BackupFile D:\Backup\UTILISATEUR_locked.csv
@@ -39,6 +50,8 @@ param(
     [string]$Schema     = 'MCO001',
     [string]$UserName,
     [System.Management.Automation.PSCredential]$Credential,
+    [string]$CredFile   = "$PSScriptRoot\MCODEV.cred",
+    [switch]$ResetCred,                            # re-prompt and overwrite the .cred file
     [string[]]$ExcludeUsers = @('PATKE01', 'CICAM01', 'KHARI01'),
     [string]$BackupFile = "$PSScriptRoot\UTILISATEUR_locked_users.csv",
     [string]$DllPath    = "$PSScriptRoot\Oracle.ManagedDataAccess.dll"
@@ -66,9 +79,22 @@ if ($Option -eq '2' -and -not (Test-Path -LiteralPath $BackupFile)) {
 }
 
 # --- Credentials -------------------------------------------------------------
+if (-not $Credential -and -not $ResetCred -and (Test-Path -LiteralPath $CredFile)) {
+    try {
+        $Credential = Import-Clixml -LiteralPath $CredFile
+        if ($Credential -isnot [System.Management.Automation.PSCredential]) { throw 'not a credential' }
+        Write-Host "Using credentials for $($Credential.UserName) from $CredFile"
+    }
+    catch {
+        throw "Cannot read '$CredFile' ($($_.Exception.Message)). It can only be decrypted by the Windows user/machine that created it. Run with -ResetCred."
+    }
+}
 if (-not $Credential) {
     if (-not $UserName) { $UserName = Read-Host 'Oracle user name' }
     $Credential = Get-Credential -UserName $UserName -Message "Password for $UserName@$Sid"
+    if (-not $Credential) { throw 'No credentials entered.' }
+    $Credential | Export-Clixml -LiteralPath $CredFile -Force
+    Write-Host "Credentials saved to $CredFile (DPAPI-encrypted, this Windows user/machine only)"
 }
 $plainPwd = $Credential.GetNetworkCredential().Password
 
@@ -107,7 +133,7 @@ function Invoke-Lock($Connection) {
     try {
         # Bind exclusion list as :ex0, :ex1, ...
         $exNames = for ($i = 0; $i -lt $ExcludeUsers.Count; $i++) { ":ex$i" }
-        $where = "(NBRE_TENTATIVE = 0 OR COMPTE_VEROUILLE = 0)"
+        $where = "NBRE_TENTATIVE = 0 AND COMPTE_VEROUILLE = 0"
         if ($exNames) { $where += " AND UPPER(TRIM(CODE_UTILISATEUR)) NOT IN ($($exNames -join ', '))" }
 
         # Lock candidate rows so nothing changes between read and update
@@ -126,20 +152,16 @@ SELECT CODE_UTILISATEUR, NOM_UTILISATEUR, PRENOM_UTILISATEUR, NBRE_TENTATIVE, CO
         $reader = $sel.ExecuteReader()
         try {
             while ($reader.Read()) {
-                $origN = Get-Str $reader 3
-                $origC = Get-Str $reader 4
-                $chgN  = $origN -eq '0'
-                $chgC  = $origC -eq '0'
                 $rows.Add([pscustomobject]@{
                     CODE_UTILISATEUR      = Get-Str $reader 0
                     NOM_UTILISATEUR       = Get-Str $reader 1
                     PRENOM_UTILISATEUR    = Get-Str $reader 2
-                    ORIG_NBRE_TENTATIVE   = $origN
-                    NEW_NBRE_TENTATIVE    = if ($chgN) { '3' } else { $origN }
-                    NBRE_TENTATIVE_CHG    = if ($chgN) { 'Y' } else { 'N' }
-                    ORIG_COMPTE_VEROUILLE = $origC
-                    NEW_COMPTE_VEROUILLE  = if ($chgC) { '1' } else { $origC }
-                    COMPTE_VEROUILLE_CHG  = if ($chgC) { 'Y' } else { 'N' }
+                    ORIG_NBRE_TENTATIVE   = Get-Str $reader 3
+                    NEW_NBRE_TENTATIVE    = '3'
+                    NBRE_TENTATIVE_CHG    = 'Y'
+                    ORIG_COMPTE_VEROUILLE = Get-Str $reader 4
+                    NEW_COMPTE_VEROUILLE  = '1'
+                    COMPTE_VEROUILLE_CHG  = 'Y'
                     CHANGED_AT            = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
                 })
             }
@@ -165,9 +187,8 @@ SELECT CODE_UTILISATEUR, NOM_UTILISATEUR, PRENOM_UTILISATEUR, NBRE_TENTATIVE, CO
 
         $upd = New-Cmd $Connection $tx @"
 UPDATE $table
-   SET NBRE_TENTATIVE   = CASE WHEN NBRE_TENTATIVE   = 0 THEN 3 ELSE NBRE_TENTATIVE   END,
-       COMPTE_VEROUILLE = CASE WHEN COMPTE_VEROUILLE = 0 THEN 1 ELSE COMPTE_VEROUILLE END
- WHERE CODE_UTILISATEUR = :code
+   SET NBRE_TENTATIVE = 3, COMPTE_VEROUILLE = 1
+ WHERE CODE_UTILISATEUR = :code AND NBRE_TENTATIVE = 0 AND COMPTE_VEROUILLE = 0
 "@
         $p = $upd.Parameters.Add('code', [Oracle.ManagedDataAccess.Client.OracleDbType]::Varchar2)
         $updated = 0
@@ -255,6 +276,7 @@ try {
 }
 catch {
     Write-Error "Failed: $($_.Exception.Message)"
+    if ($_.Exception.Message -match 'ORA-01017') { Write-Warning "Invalid user/password. Run with -ResetCred to update $CredFile." }
     exit 1
 }
 finally {
