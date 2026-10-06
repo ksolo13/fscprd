@@ -16,8 +16,8 @@
 
     Option 2 - Restore users
         Reads the backup CSV and sets each changed column back to its original value.
-        Only columns that option 1 actually changed are restored, and only if they still
-        hold the value option 1 set (rows changed since by someone else are skipped and reported).
+        Only columns that option 1 actually changed are restored, and only if they all still
+        hold the values option 1 set (rows changed since by someone else are skipped and reported).
         On success the backup file is renamed to *.restored_<timestamp>.csv.
 
     Each option runs in a single transaction: all rows commit or none do.
@@ -228,16 +228,18 @@ function Invoke-Restore($Connection) {
         $skipped  = New-Object System.Collections.Generic.List[string]
         foreach ($r in $rows) {
             $set = @()
-            if ($r.NBRE_TENTATIVE_CHG   -eq 'Y') { $set += 'NBRE_TENTATIVE = CASE WHEN NBRE_TENTATIVE = :newN THEN :origN ELSE NBRE_TENTATIVE END' }
-            if ($r.COMPTE_VEROUILLE_CHG -eq 'Y') { $set += 'COMPTE_VEROUILLE = CASE WHEN COMPTE_VEROUILLE = :newC THEN :origC ELSE COMPTE_VEROUILLE END' }
+            # Plain SET (no CASE): CASE needs matching datatypes, while plain SET/compare lets
+            # Oracle convert the string bind to the column type (NUMBER or CHAR) implicitly.
+            if ($r.NBRE_TENTATIVE_CHG   -eq 'Y') { $set += 'NBRE_TENTATIVE = :origN' }
+            if ($r.COMPTE_VEROUILLE_CHG -eq 'Y') { $set += 'COMPTE_VEROUILLE = :origC' }
             if (-not $set) { continue }
 
-            # Only touch the row if at least one changed column still holds the value option 1 set
+            # Only touch the row if every changed column still holds the value option 1 set
             $cond = @()
             if ($r.NBRE_TENTATIVE_CHG   -eq 'Y') { $cond += 'NBRE_TENTATIVE = :newN' }
             if ($r.COMPTE_VEROUILLE_CHG -eq 'Y') { $cond += 'COMPTE_VEROUILLE = :newC' }
 
-            $cmd = New-Cmd $Connection $tx "UPDATE $table SET $($set -join ', ') WHERE CODE_UTILISATEUR = :code AND ($($cond -join ' OR '))"
+            $cmd = New-Cmd $Connection $tx "UPDATE $table SET $($set -join ', ') WHERE CODE_UTILISATEUR = :code AND $($cond -join ' AND ')"
             if ($r.NBRE_TENTATIVE_CHG -eq 'Y') {
                 [void]$cmd.Parameters.Add('newN',  $r.NEW_NBRE_TENTATIVE)
                 [void]$cmd.Parameters.Add('origN', $r.ORIG_NBRE_TENTATIVE)
