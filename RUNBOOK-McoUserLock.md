@@ -244,16 +244,16 @@ Select option (1/2):
 | `Backup file '...' already exists` (option 1) | A previous lock has not been restored | Run option 2 first, or use `-BackupFile` with a new name if the old file is no longer needed |
 | `Backup file '...' not found` (option 2) | Wrong folder, or already restored | Run from the folder holding the CSV, or pass `-BackupFile`. Check for a `*.restored_*.csv` |
 | `ORA-00932: inconsistent datatypes: expected CHAR got NUMBER` (option 2) | Old script version (before 6 Oct 2026) | Download the current script and run option 2 again. Nothing was changed by the failed run |
-| Script waits after `Connected to ...` | Another session holds uncommitted changes on `UTILISATEUR` rows | Ask the other session (or the DBA) to commit or roll back; or press Ctrl+C and retry later |
+| Script waits after `Connected to ...` | Another session holds uncommitted changes on `UTILISATEUR` rows | Ask the other session (or KYNDRYL Oracle Database Support) to commit or roll back; or press Ctrl+C and retry later |
 | `Skipped N user(s) ...` (option 2) | Those users were changed after the lock (e.g. reset by support) | Check each user in SQL Developer and fix manually if needed |
 | `Expected N rows updated, got M. Rolled back.` | Rows changed between select and update | Re-run option 1; nothing was saved |
 | `Cannot read '...MCODEV.cred'` / `Key not valid for use in specified state` | `.cred` created by another Windows user or PC | Run with `-ResetCred` |
 | `ORA-01017: invalid username/password` | Wrong or changed password | Run with `-ResetCred` |
-| `ORA-28000: account is locked` | Oracle account locked | Ask the DBA to unlock it |
-| `ORA-00942: table or view does not exist` | No grant on `MCO001.UTILISATEUR`, or wrong schema | Ask the DBA for `SELECT` / `UPDATE`; check `-Schema` |
-| `ORA-01031: insufficient privileges` | `SELECT` only, no `UPDATE` | Ask the DBA for `UPDATE` on `MCO001.UTILISATEUR` |
+| `ORA-28000: account is locked` | Oracle account locked | Ask KYNDRYL Oracle Database Support to unlock it |
+| `ORA-00942: table or view does not exist` | No grant on `MCO001.UTILISATEUR`, or wrong schema | Ask KYNDRYL Oracle Database Support for `SELECT` / `UPDATE`; check `-Schema` |
+| `ORA-01031: insufficient privileges` | `SELECT` only, no `UPDATE` | Ask KYNDRYL Oracle Database Support for `UPDATE` on `MCO001.UTILISATEUR` |
 | `ORA-12505: listener does not currently know of SID` | `MCODEV` is a service name, not a SID | Add `-UseServiceName` |
-| `ORA-12170` / `ORA-12541` / timeout | Network or firewall | `Test-NetConnection 10.152.218.205 -Port 1526`; check VPN |
+| `ORA-12170` / `ORA-12541` / timeout | Network or firewall | `Test-NetConnection 10.152.218.205 -Port 1526`; check VPN; if blocked, submit a Firewall Request via ServiceNow |
 | `Oracle.ManagedDataAccess.dll not found` | Driver missing | Section 3.1, or pass `-DllPath` |
 | `... running scripts is disabled on this system` | Execution policy / downloaded file | `Unblock-File .\Set-McoUserLock.ps1`, or `powershell.exe -ExecutionPolicy Bypass -File .\Set-McoUserLock.ps1` |
 
@@ -275,10 +275,10 @@ Select option (1/2):
 
 | Issue | Contact |
 |---|---|
-| Database access, grants, row locks | DBA team — *TBD* |
-| Network or firewall to `10.152.218.205:1526` | Network / Infrastructure — *TBD* |
-| MCO application / user impact | MCO application owner — *TBD* |
-| Script defects | Application Development — *TBD* |
+| Database access, grants, row locks | KYNDRYL — Oracle Database Support |
+| Network or firewall to `10.152.218.205:1526` | Please submit a Firewall Request via ServiceNow |
+| MCO application / user impact | Kevin Paterson |
+| Script defects | Kevin Paterson |
 
 ---
 
