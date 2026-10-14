@@ -1,6 +1,0 @@
-pandas>=2.1
-openpyxl>=3.1
-SQLAlchemy>=2.0
-# Install the driver for your database:
-pyodbc>=5.0        # SQL Server (also needs Microsoft ODBC Driver 18 for SQL Server)
-# oracledb>=2.0    # Oracle
