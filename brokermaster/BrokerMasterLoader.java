@@ -21,6 +21,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.time.format.ResolverStyle;
+import java.time.temporal.ChronoField;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -79,6 +80,12 @@ public class BrokerMasterLoader {
         for (String p : new String[] {"uuuu-M-d", "uuuu/M/d", "M/d/uuuu", "d-MMM-uuuu", "d MMM uuuu",
                                       "MMM d, uuuu", "MMMM d, uuuu", "uuuuMMdd"}) {
             DATE_FORMATS.add(new DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern(p)
+                .toFormatter(Locale.ENGLISH).withResolverStyle(ResolverStyle.STRICT));
+        }
+        // Two-digit years as typed in the file (28-Feb-25). Same rule as Excel: 00-29 -> 2000s, 30-99 -> 1900s
+        for (String sep : new String[] {"-", " "}) {
+            DATE_FORMATS.add(new DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern("d" + sep + "MMM" + sep)
+                .appendValueReduced(ChronoField.YEAR, 2, 2, 1930)
                 .toFormatter(Locale.ENGLISH).withResolverStyle(ResolverStyle.STRICT));
         }
     }
