@@ -33,6 +33,7 @@ Header matching ignores line breaks, extra spaces and case.
 | Date as text | Accepted: `2023-03-15`, `2023/03/15`, `3/15/2023` (month first), `15-Mar-2023`, `15 Mar 2023`, `Mar 15, 2023`, `20230315`, `15-Mar-23` (2-digit years: 00-29 → 2000s, 30-99 → 1900s, as in Excel) |
 | Date cell with other text (e.g. `TBD`) | Row rejected (exceptions CSV) |
 | `BROKERMASTER` already has duplicate `CPSCODE`s | Load stops, nothing changed |
+| A loaded column heading appears twice (e.g. in a hidden column) | Load stops, nothing changed |
 | File unchanged since last successful load (SHA-256) | Skipped (`--force` to reload) |
 | File modified less than 2 minutes ago | Skipped until the next run (may still be copying) |
 | Any error | Whole load rolled back |

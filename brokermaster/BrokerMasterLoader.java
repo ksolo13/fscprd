@@ -263,10 +263,17 @@ public class BrokerMasterLoader {
         if (headerRow == null) throw new IllegalArgumentException(path.getFileName() + " is empty");
 
         Map<String, Integer> headers = new HashMap<>();
+        Set<String> repeated = new HashSet<>();
         List<String> found = new ArrayList<>();
         for (Map.Entry<Integer, Cell> e : new TreeMap<>(sheet.get(headerRow)).entrySet()) {
             found.add(e.getValue().text);
-            headers.putIfAbsent(normHeader(e.getValue().text), e.getKey());
+            if (headers.putIfAbsent(normHeader(e.getValue().text), e.getKey()) != null) repeated.add(normHeader(e.getValue().text));
+        }
+        for (String[] m : COLUMN_MAP) { // e.g. a hidden column with the same heading: don't guess which one to load
+            if (repeated.contains(normHeader(m[0]))) {
+                throw new IllegalArgumentException("Column '" + m[0] + "' appears more than once in " + path.getFileName()
+                    + " (check hidden columns)");
+            }
         }
         int[] col = new int[COLUMN_MAP.length];
         List<String> missing = new ArrayList<>();
