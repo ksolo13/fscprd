@@ -35,6 +35,8 @@ Header matching ignores line breaks, extra spaces and case, so the wrapped heade
 
 ## Install
 
+Prerequisite for SQL Server: [Microsoft ODBC Driver 18 for SQL Server](https://learn.microsoft.com/sql/connect/odbc/linux-mac/installing-the-microsoft-odbc-driver-for-sql-server) (`msodbcsql18` package) and `unixODBC`.
+
 ```bash
 sudo mkdir -p /opt/mos/brokermaster /var/log/mos
 sudo cp load_brokermaster.py requirements.txt /opt/mos/brokermaster/
