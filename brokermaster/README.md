@@ -27,7 +27,11 @@ Header matching ignores line breaks, extra spaces and case.
 | `CPSCODE` not yet in the table | Insert |
 | `CPSCODE` in the table, values changed | Update |
 | `CPSCODE` in the table but not in the file | Left unchanged (count logged) |
-| Blank `CPSCODE` | Rejected (exceptions CSV) |
+| Blank rows | Skipped |
+| Rows with no code, firm or agent (e.g. only MOS Channel and a date) | Skipped as placeholders (count logged) |
+| Section banner: only column A filled (e.g. `REMOVED FROM PMPP`) or a repeated header row | Skipped (logged); rows below it load normally |
+| Hidden or filtered-out rows | Loaded like any other row (filters are ignored) |
+| Blank `CPSCODE` but firm or agent filled in | Rejected (exceptions CSV) |
 | Text cell is `N/A`, `NA`, `NULL`, `#N/A` or blank | Loaded as empty string `''` (matches existing data) |
 | Date cell is `N/A`, `NA`, `NULL`, `#N/A` or blank | Loaded as `NULL` |
 | Date as text | Accepted: `2023-03-15`, `2023/03/15`, `3/15/2023` (month first), `15-Mar-2023`, `15 Mar 2023`, `Mar 15, 2023`, `20230315`, `15-Mar-23` (2-digit years: 00-29 → 2000s, 30-99 → 1900s, as in Excel) |

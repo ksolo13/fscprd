@@ -122,6 +122,7 @@ public class BrokerMasterLoader {
         final List<Row> rows = new ArrayList<>();
         final List<String[]> exceptions = new ArrayList<>(); // EXCEL_ROW, CPSCODE, ..., REASON
         int rejected;
+        int placeholders; // rows with no code, firm or agent
     }
 
     // --- XLSX reading (Office Open XML via the JDK, no external libraries) ---------------------
@@ -300,6 +301,18 @@ public class BrokerMasterLoader {
             Row r = new Row();
             r.excelRow = e.getKey();
             r.cps = textValue(c[0]); r.firm = textValue(c[1]); r.agent = textValue(c[2]); r.channel = textValue(c[3]);
+
+            // Breaks in the file: template rows, section banners ("REMOVED FROM PMPP"), repeated header rows
+            if (r.cps == null && r.firm == null && r.agent == null) {
+                res.placeholders++; // e.g. only MOS Channel and/or a date filled in
+                continue;
+            }
+            boolean onlyCode = r.firm == null && r.agent == null && r.channel == null
+                && textValue(c[4]) == null && textValue(c[5]) == null;
+            if (r.cps != null && (onlyCode || normHeader(r.cps).equals(normHeader(COLUMN_MAP[0][0])))) {
+                log("INFO", "Row " + r.excelRow + ": section heading '" + r.cps + "' skipped");
+                continue;
+            }
             String reason = null;
             try { r.added = dateValue(c[4]); } catch (IllegalArgumentException ex) { reason = "Invalid ADDED date: '" + c[4].text + "'"; }
             if (reason == null) {
@@ -504,7 +517,7 @@ public class BrokerMasterLoader {
 
             res = readFile(file);
             log("INFO", "Read " + file.getFileName() + ": " + res.rows.size() + " unique CPSCODE rows, "
-                + res.exceptions.size() + " exceptions");
+                + res.exceptions.size() + " exceptions, " + res.placeholders + " placeholder rows skipped");
             if (res.rows.isEmpty()) throw new IllegalArgumentException("No valid rows in file; refusing to load");
 
             String url = System.getenv("DB_URL");
