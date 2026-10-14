@@ -339,8 +339,9 @@ public class BrokerMasterLoader {
         try { return parseDateText(s); } catch (IllegalArgumentException e) { return s; } // differs -> gets updated
     }
 
+    /** Blank text is written as '' (not NULL), matching the existing BROKERMASTER data. */
     static void setText(PreparedStatement ps, int i, String v) throws Exception {
-        if (v == null) ps.setNull(i, Types.VARCHAR); else ps.setString(i, v);
+        ps.setString(i, v == null ? "" : v);
     }
 
     static void setDate(PreparedStatement ps, int i, LocalDate v) throws Exception {

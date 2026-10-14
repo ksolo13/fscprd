@@ -28,7 +28,8 @@ Header matching ignores line breaks, extra spaces and case.
 | `CPSCODE` in the table, values changed | Update |
 | `CPSCODE` in the table but not in the file | Left unchanged (count logged) |
 | Blank `CPSCODE` | Rejected (exceptions CSV) |
-| Cell is `N/A`, `NA`, `NULL`, `#N/A` or blank | Loaded as `NULL` |
+| Text cell is `N/A`, `NA`, `NULL`, `#N/A` or blank | Loaded as empty string `''` (matches existing data) |
+| Date cell is `N/A`, `NA`, `NULL`, `#N/A` or blank | Loaded as `NULL` |
 | Date as text | Accepted: `2023-03-15`, `2023/03/15`, `3/15/2023` (month first), `15-Mar-2023`, `15 Mar 2023`, `Mar 15, 2023`, `20230315` |
 | Date cell with other text (e.g. `TBD`) | Row rejected (exceptions CSV) |
 | `BROKERMASTER` already has duplicate `CPSCODE`s | Load stops, nothing changed |
