@@ -44,6 +44,8 @@ Header matching ignores line breaks, extra spaces and case.
 
 ## Install (as the service account, not root)
 
+Full step-by-step server deployment, including the service account, permissions, rollback and troubleshooting: see [DEPLOY.md](DEPLOY.md).
+
 1. Check where Java 8 is installed: `ls -d /usr/java/*1.8*`
 2. On a workstation with internet, download the JDBC driver and copy it to the server:
    `https://repo1.maven.org/maven2/com/microsoft/sqlserver/mssql-jdbc/12.8.1.jre8/mssql-jdbc-12.8.1.jre8.jar`
