@@ -35,30 +35,36 @@ With WinSCP (or `scp`), copy into `/opt/mos/brokermaster/`:
 
 | File | Destination |
 |---|---|
-| `BrokerMasterLoader.java` | `/opt/mos/brokermaster/` |
 | `run_brokermaster.sh` | `/opt/mos/brokermaster/` |
-| `.env.example` | `/opt/mos/brokermaster/` |
+| `.env.example` | `/opt/mos/brokermaster/` (rename if the download dropped the leading dot) |
+| `brokermaster-loader.jar` (pre-compiled for Java 8) | `/opt/mos/brokermaster/lib/` |
 | `mssql-jdbc-12.8.1.jre8.jar` | `/opt/mos/brokermaster/lib/` |
 
-Then fix Windows line endings and ownership:
+Then fix Windows line endings and ownership, and check both jars:
 
 ```bash
 cd /opt/mos/brokermaster
-sed -i 's/\r$//' run_brokermaster.sh .env.example BrokerMasterLoader.java
+sed -i 's/\r$//' run_brokermaster.sh .env.example
 chown -R mosetl:mosetl /opt/mos/brokermaster
 chmod 750 run_brokermaster.sh
-sha256sum lib/mssql-jdbc-12.8.1.jre8.jar    # must match the hash in step 0
+sha256sum lib/*.jar
 ```
 
-## 4. Check Java 8 and compile
+| Jar | SHA-256 |
+|---|---|
+| `brokermaster-loader.jar` | `23360e5928d14e1b071b0a29f214f46878b0f29b1c7e7320bc005f8b45e6270a` |
+| `mssql-jdbc-12.8.1.jre8.jar` | `44f217b1d67d22442002ee2d1c4ab8e86358606a787b95eeb5301f235482a2ab` |
+
+## 4. Check Java 8
+
+Nothing to compile on the server: the loader jar is already built for Java 8 (`javac` is not executable on this server).
 
 ```bash
-ls -d /usr/java/*1.8*                                  # expect jdk1.8.0_291-amd64 and jre1.8.0_291-amd64
-/usr/java/jdk1.8.0_291-amd64/bin/javac -version         # expect javac 1.8.0_291
-su - mosetl -c 'cd /opt/mos/brokermaster && /usr/java/jdk1.8.0_291-amd64/bin/javac -d classes BrokerMasterLoader.java && ls classes'
+ls -d /usr/java/*1.8*                                              # expect jre1.8.0_291-amd64 / jdk1.8.0_291-amd64
+su - mosetl -c '/usr/java/jre1.8.0_291-amd64/bin/java -version'    # expect java version "1.8.0_291"
 ```
 
-Expected: `BrokerMasterLoader.class` and a few `BrokerMasterLoader$*.class` files. If the Java path differs, use it here and set `JAVA_BIN` in `.env` (step 5).
+If that gives `Permission denied`, try `/usr/java/jdk1.8.0_291-amd64/jre/bin/java -version` and set whichever works as `JAVA_BIN` in `.env` (step 5). If neither works, run `ls -l` on them and ask the Linux team for execute access to the Java 8 runtime.
 
 ## 5. Create `.env`
 
@@ -179,6 +185,8 @@ Optional: clean up old exceptions CSVs and archive copies by adding this line to
 | Error in the log | Fix |
 |---|---|
 | `UnsupportedClassVersionError` | Ran with Java 7. Set `JAVA_BIN` in `.env` to the Java 8 path |
+| `Permission denied` running `java` | See step 4 |
+| `Could not find or load main class BrokerMasterLoader` | `brokermaster-loader.jar` is missing from `lib/` |
 | `/bin/bash^M: bad interpreter` | Windows line endings: rerun the `sed` command in step 3 |
 | `DB_URL is not set` | `.env` missing or not readable by `mosetl` |
 | `The TCP/IP connection to the host ... has failed` | Wrong server/port, or firewall. Recheck step 6 |

@@ -8,7 +8,7 @@ set -a; . "$APP_DIR/.env"; set +a
 
 JAVA="${JAVA_BIN:-}"
 if [ -z "$JAVA" ]; then
-    for j in /usr/java/jre1.8.0_291-amd64/bin/java /usr/java/jdk1.8.0_291-amd64/bin/java /usr/java/latest/bin/java; do
+    for j in /usr/java/jre1.8.0_291-amd64/bin/java /usr/java/jdk1.8.0_291-amd64/jre/bin/java /usr/java/jdk1.8.0_291-amd64/bin/java /usr/java/latest/bin/java; do
         if [ -x "$j" ]; then JAVA="$j"; break; fi
     done
 fi

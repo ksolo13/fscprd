@@ -55,8 +55,8 @@ Full step-by-step server deployment, including the service account, permissions,
 ```bash
 mkdir -p /opt/mos/brokermaster/lib /opt/mos/brokermaster/classes /var/log/mos
 cd /opt/mos/brokermaster
-# copy in: BrokerMasterLoader.java, run_brokermaster.sh, .env.example, and lib/mssql-jdbc-12.8.1.jre8.jar
-/usr/java/jdk1.8.0_291-amd64/bin/javac -d classes BrokerMasterLoader.java   # compile with the Java 8 JDK
+# copy in: run_brokermaster.sh, .env.example, lib/brokermaster-loader.jar, lib/mssql-jdbc-12.8.1.jre8.jar
+# copy dist/brokermaster-loader.jar (pre-compiled for Java 8) into lib/; no javac needed on the server
 cp .env.example .env && chmod 600 .env && chmod 750 run_brokermaster.sh       # then edit .env
 ```
 
