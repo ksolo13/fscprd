@@ -60,12 +60,15 @@ sha256sum lib/*.jar
 
 Nothing to compile on the server: the loader jar is already built for Java 8 (`javac` is not executable on this server).
 
+On this server `/usr/java/latest` and `/usr/java/default` point to **Java 6** and the default `java` is Java 7. Neither can run the loader. The Java 8 runtimes are:
+
 ```bash
-ls -d /usr/java/*1.8*                                              # expect jre1.8.0_291-amd64 / jdk1.8.0_291-amd64
-su - mosetl -c '/usr/java/jre1.8.0_291-amd64/bin/java -version'    # expect java version "1.8.0_291"
+ls -l /usr/java/jdk1.8.0_291-amd64/jre/bin/java /usr/java/jdk1.8.0_291-amd64/bin/java /usr/java/jre1.8.0_281/bin/java
+su - mosetl -c '/usr/java/jdk1.8.0_291-amd64/jre/bin/java -version'   # expect java version "1.8.0_291"
+su - mosetl -c '/usr/java/jre1.8.0_281/bin/java -version'             # expect java version "1.8.0_281"
 ```
 
-If that gives `Permission denied`, try `/usr/java/jdk1.8.0_291-amd64/jre/bin/java -version` and set whichever works as `JAVA_BIN` in `.env` (step 5). If neither works, run `ls -l` on them and ask the Linux team for execute access to the Java 8 runtime.
+At least one must print a `1.8.0_…` version. `run_brokermaster.sh` checks them in that order, uses the first that runs and reports 1.8, and never falls back to Java 6/7. If you want to pin one, set it as `JAVA_BIN` in `.env` (step 5). If all give `Permission denied`, ask the Linux team for execute access to a Java 8 runtime.
 
 ## 5. Create `.env`
 
