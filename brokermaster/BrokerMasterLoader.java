@@ -395,20 +395,28 @@ public class BrokerMasterLoader {
 
     static Map<String, Integer> upsert(Connection conn, List<Row> rows) throws Exception {
         Map<String, List<Object>> existing = new HashMap<>();
+        Map<String, List<Object>> idsByCode = new LinkedHashMap<>(); // to report duplicates by ID
+        int dbRows = 0;
         try (Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT CPSCODE, BROKERFIRM, AGENT, BROKERCHANNEL, ADDED, REMOVED FROM " + TABLE)) {
+             ResultSet rs = st.executeQuery("SELECT ID, CPSCODE, BROKERFIRM, AGENT, BROKERCHANNEL, ADDED, REMOVED FROM " + TABLE)) {
             while (rs.next()) {
-                String code = (String) dbText(rs.getObject(1));
-                if (existing.containsKey(code)) {
-                    throw new IllegalStateException(TABLE + " already has duplicate CPSCODE '" + code + "' (" + connInfo
-                        + "); clean it up before loading");
-                }
-                existing.put(code, Arrays.asList(dbText(rs.getObject(2)), dbText(rs.getObject(3)), dbText(rs.getObject(4)),
-                                                 dbDate(rs.getObject(5)), dbDate(rs.getObject(6))));
+                dbRows++;
+                String code = (String) dbText(rs.getObject(2));
+                idsByCode.computeIfAbsent(code, k -> new ArrayList<>()).add(rs.getObject(1));
+                existing.put(code, Arrays.asList(dbText(rs.getObject(3)), dbText(rs.getObject(4)), dbText(rs.getObject(5)),
+                                                 dbDate(rs.getObject(6)), dbDate(rs.getObject(7))));
             }
         }
 
-        log("INFO", TABLE + " currently has " + existing.size() + " rows");
+        log("INFO", TABLE + " currently has " + dbRows + " rows");
+        List<String> dups = new ArrayList<>();
+        for (Map.Entry<String, List<Object>> e : idsByCode.entrySet()) {
+            if (e.getValue().size() > 1) dups.add("'" + e.getKey() + "' at ID " + e.getValue());
+        }
+        if (!dups.isEmpty()) {
+            throw new IllegalStateException(TABLE + " has " + dups.size() + " duplicated CPSCODE(s) (" + connInfo + "), e.g. "
+                + String.join("; ", dups.subList(0, Math.min(5, dups.size()))) + "; clean them up before loading");
+        }
 
         List<Row> inserts = new ArrayList<>(), updates = new ArrayList<>();
         int unchanged = 0;

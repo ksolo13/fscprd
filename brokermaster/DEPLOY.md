@@ -53,7 +53,7 @@ sha256sum lib/*.jar
 
 | Jar | SHA-256 |
 |---|---|
-| `brokermaster-loader.jar` | `80ba1fb2d4474ab889167326561abcfeac1b87366897807f0a5c871eb332b35a` |
+| `brokermaster-loader.jar` | `23d78f0bc7450a823c44a2e5ec042c88805f49923b15dfe191184c382ad56ea9` |
 | `mssql-jdbc-12.8.1.jre8.jar` | `44f217b1d67d22442002ee2d1c4ab8e86358606a787b95eeb5301f235482a2ab` |
 
 ## 4. Check Java 8
