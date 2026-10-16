@@ -53,7 +53,7 @@ sha256sum lib/*.jar
 
 | Jar | SHA-256 |
 |---|---|
-| `brokermaster-loader.jar` | `59238b16ec1981d473a1e99b5f6149684eb9ced7a7e41245cc06fc65133c54d2` |
+| `brokermaster-loader.jar` | `80ba1fb2d4474ab889167326561abcfeac1b87366897807f0a5c871eb332b35a` |
 | `mssql-jdbc-12.8.1.jre8.jar` | `44f217b1d67d22442002ee2d1c4ab8e86358606a787b95eeb5301f235482a2ab` |
 
 ## 4. Check Java 8
@@ -202,4 +202,5 @@ Optional: clean up old exceptions CSVs and archive copies by adding this line to
 | `Missing column(s)` | A heading in the Excel file changed. The error lists the headings found |
 | `appears more than once (check hidden columns)` | Duplicate heading, often in hidden columns J–P |
 | `already has duplicate CPSCODE` | Clean up duplicates in `BROKERMASTER` first |
+| `already has duplicate CPSCODE` but the table looks empty in DBeaver | The loader is connected elsewhere. Compare the log's `Connected to server=… database=…` with `SELECT @@SERVERNAME, DB_NAME()` in DBeaver. For a named instance (`HOST\INSTANCE`), put that instance's port in `DB_URL`, or use `;instanceName=…` |
 | Job never runs | `grep CROND /var/log/cron`; check `crontab -u mosetl -l` |

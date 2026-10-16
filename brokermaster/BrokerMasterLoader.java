@@ -377,6 +377,22 @@ public class BrokerMasterLoader {
         if (v == null) ps.setNull(i, Types.DATE); else ps.setDate(i, java.sql.Date.valueOf(v));
     }
 
+    static String connInfo = "";
+
+    /** "server=... database=... user=..." for the log; never includes the password. */
+    static String describe(Connection conn) {
+        String server = null;
+        try (Statement st = conn.createStatement(); ResultSet rs = st.executeQuery("SELECT @@SERVERNAME")) {
+            if (rs.next()) server = rs.getString(1); // SQL Server: HOST\INSTANCE
+        } catch (Exception notSqlServer) { /* fall back to the URL below */ }
+        try {
+            if (server == null) server = conn.getMetaData().getURL();
+            return "server=" + server + " database=" + conn.getCatalog() + " user=" + conn.getMetaData().getUserName();
+        } catch (Exception e) {
+            return "server=" + server;
+        }
+    }
+
     static Map<String, Integer> upsert(Connection conn, List<Row> rows) throws Exception {
         Map<String, List<Object>> existing = new HashMap<>();
         try (Statement st = conn.createStatement();
@@ -384,12 +400,15 @@ public class BrokerMasterLoader {
             while (rs.next()) {
                 String code = (String) dbText(rs.getObject(1));
                 if (existing.containsKey(code)) {
-                    throw new IllegalStateException(TABLE + " already has duplicate CPSCODE '" + code + "'; clean it up before loading");
+                    throw new IllegalStateException(TABLE + " already has duplicate CPSCODE '" + code + "' (" + connInfo
+                        + "); clean it up before loading");
                 }
                 existing.put(code, Arrays.asList(dbText(rs.getObject(2)), dbText(rs.getObject(3)), dbText(rs.getObject(4)),
                                                  dbDate(rs.getObject(5)), dbDate(rs.getObject(6))));
             }
         }
+
+        log("INFO", TABLE + " currently has " + existing.size() + " rows");
 
         List<Row> inserts = new ArrayList<>(), updates = new ArrayList<>();
         int unchanged = 0;
@@ -547,6 +566,8 @@ public class BrokerMasterLoader {
             try (Connection conn = user == null || user.isEmpty()
                     ? DriverManager.getConnection(url)
                     : DriverManager.getConnection(url, user, System.getenv("DB_PASSWORD"))) {
+                connInfo = describe(conn);
+                log("INFO", "Connected to " + connInfo + " table=" + TABLE);
                 conn.setAutoCommit(false);
                 try {
                     Map<String, Integer> stats = upsert(conn, res.rows);
