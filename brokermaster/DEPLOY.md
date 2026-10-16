@@ -8,6 +8,7 @@ Run as `root` unless a step says otherwise. Deploy to UAT (`NC100DITDEVAPPUAT`) 
 |---|---|---|
 | SQL login for the loader | DBA | `GRANT SELECT, INSERT, UPDATE ON dbo.BROKERMASTER TO [BROKER_LOADER];` |
 | Backup of the table | DBA | `SELECT * INTO dbo.BROKERMASTER_BAK_20261014 FROM dbo.BROKERMASTER;` |
+| New `DATEMODIFIED` column (after the backup) | DBA | `ALTER TABLE dbo.BROKERMASTER ADD DATEMODIFIED DATETIME NULL;` Existing rows stay NULL. First confirm no other code inserts into this table without a column list |
 | Firewall: app server → SQL Server port (1433) | Network | Tested in step 6 |
 | Current delete/reload job identified | Load owner | It is turned off in step 10 |
 | JDBC driver downloaded on your workstation | You | `https://repo1.maven.org/maven2/com/microsoft/sqlserver/mssql-jdbc/12.8.1.jre8/mssql-jdbc-12.8.1.jre8.jar` |
@@ -52,7 +53,7 @@ sha256sum lib/*.jar
 
 | Jar | SHA-256 |
 |---|---|
-| `brokermaster-loader.jar` | `23360e5928d14e1b071b0a29f214f46878b0f29b1c7e7320bc005f8b45e6270a` |
+| `brokermaster-loader.jar` | `59238b16ec1981d473a1e99b5f6149684eb9ced7a7e41245cc06fc65133c54d2` |
 | `mssql-jdbc-12.8.1.jre8.jar` | `44f217b1d67d22442002ee2d1c4ab8e86358606a787b95eeb5301f235482a2ab` |
 
 ## 4. Check Java 8
@@ -83,6 +84,7 @@ Set (keep the single quotes):
 | `DB_USER` / `DB_PASSWORD` | The SQL login from step 0 |
 | `BROKER_TABLE` | `'dbo.BROKERMASTER'` |
 | `BROKER_ID_MODE` | `'identity'` (confirmed: `ID` is IDENTITY) |
+| `BROKER_MODIFIED_COLUMN` | `'DATEMODIFIED'`, only once the column exists (step 0). Leave empty to turn the feature off |
 | `BROKER_ARCHIVE_DIR` / `BROKER_STATE_FILE` | Leave as in the example (`/opt/mos/brokermaster/...`) |
 
 ## 6. Check access
@@ -128,6 +130,8 @@ Verify in SQL:
 ```sql
 SELECT COUNT(*) AS total_rows, COUNT(DISTINCT CPSCODE) AS unique_codes FROM dbo.BROKERMASTER;  -- must be equal
 SELECT TOP 20 * FROM dbo.BROKERMASTER ORDER BY ID DESC;                                        -- newly inserted rows
+SELECT DATEMODIFIED, COUNT(*) AS row_count FROM dbo.BROKERMASTER GROUP BY DATEMODIFIED ORDER BY DATEMODIFIED DESC;
+-- one timestamp per run that changed rows; NULL = not changed since tracking started
 ```
 
 Run it again without `--force`: the log should say `unchanged since last load; nothing to do`.

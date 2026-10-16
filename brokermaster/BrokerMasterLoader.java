@@ -61,6 +61,8 @@ public class BrokerMasterLoader {
     // identity | max | SQL expression such as "NEXT VALUE FOR dbo.BROKERMASTER_SEQ"
     static final String ID_MODE = env("BROKER_ID_MODE", "identity").trim();
     static final long MIN_FILE_AGE_SEC = Long.parseLong(env("BROKER_MIN_FILE_AGE_SEC", "120"));
+    // Column stamped with the run time on inserts and real changes (e.g. DATEMODIFIED); empty = off
+    static final String MODIFIED_COL = env("BROKER_MODIFIED_COLUMN", "").trim();
 
     // Excel header (line breaks / extra spaces ignored, case-insensitive) -> BROKERMASTER column
     static final String[][] COLUMN_MAP = {
@@ -400,12 +402,29 @@ public class BrokerMasterLoader {
             else unchanged++;
         }
 
+        // One database timestamp per run, so every row changed by this run carries the same value
+        java.sql.Timestamp runTime = null;
+        if (!MODIFIED_COL.isEmpty() && !(inserts.isEmpty() && updates.isEmpty())) {
+            if (!MODIFIED_COL.matches("\\w+")) throw new IllegalArgumentException("Invalid BROKER_MODIFIED_COLUMN: '" + MODIFIED_COL + "'");
+            try (Statement st = conn.createStatement(); ResultSet rs = st.executeQuery("SELECT CURRENT_TIMESTAMP")) {
+                rs.next();
+                runTime = rs.getTimestamp(1);
+            }
+            log("INFO", "Stamping " + MODIFIED_COL + " = " + runTime + " on inserted/changed rows");
+        }
+        String modSet = runTime == null ? "" : ", " + MODIFIED_COL + " = ?";
+        String modCol = runTime == null ? "" : ", " + MODIFIED_COL;
+        String modVal = runTime == null ? "" : ", ?";
+
         if (!updates.isEmpty()) {
             try (PreparedStatement ps = conn.prepareStatement("UPDATE " + TABLE
-                    + " SET BROKERFIRM = ?, AGENT = ?, BROKERCHANNEL = ?, ADDED = ?, REMOVED = ? WHERE CPSCODE = ?")) {
+                    + " SET BROKERFIRM = ?, AGENT = ?, BROKERCHANNEL = ?, ADDED = ?, REMOVED = ?" + modSet + " WHERE CPSCODE = ?")) {
                 for (Row r : updates) {
-                    setText(ps, 1, r.firm); setText(ps, 2, r.agent); setText(ps, 3, r.channel);
-                    setDate(ps, 4, r.added); setDate(ps, 5, r.removed); setText(ps, 6, r.cps);
+                    int i = 1;
+                    setText(ps, i++, r.firm); setText(ps, i++, r.agent); setText(ps, i++, r.channel);
+                    setDate(ps, i++, r.added); setDate(ps, i++, r.removed);
+                    if (runTime != null) ps.setTimestamp(i++, runTime);
+                    setText(ps, i, r.cps);
                     ps.addBatch();
                 }
                 ps.executeBatch();
@@ -413,12 +432,13 @@ public class BrokerMasterLoader {
         }
 
         if (!inserts.isEmpty()) {
-            String cols = "CPSCODE, BROKERFIRM, AGENT, BROKERCHANNEL, ADDED, REMOVED";
+            String cols = "CPSCODE, BROKERFIRM, AGENT, BROKERCHANNEL, ADDED, REMOVED" + modCol;
+            String vals = "?, ?, ?, ?, ?, ?" + modVal;
             String sql;
             long nextId = 0;
             boolean bindId = false;
             if (ID_MODE.equalsIgnoreCase("identity")) {
-                sql = "INSERT INTO " + TABLE + " (" + cols + ") VALUES (?, ?, ?, ?, ?, ?)";
+                sql = "INSERT INTO " + TABLE + " (" + cols + ") VALUES (" + vals + ")";
             } else if (ID_MODE.equalsIgnoreCase("max")) {
                 try (Statement st = conn.createStatement();
                      ResultSet rs = st.executeQuery("SELECT COALESCE(MAX(ID), 0) FROM " + TABLE)) {
@@ -426,9 +446,9 @@ public class BrokerMasterLoader {
                     nextId = rs.getLong(1) + 1;
                 }
                 bindId = true;
-                sql = "INSERT INTO " + TABLE + " (ID, " + cols + ") VALUES (?, ?, ?, ?, ?, ?, ?)";
+                sql = "INSERT INTO " + TABLE + " (ID, " + cols + ") VALUES (?, " + vals + ")";
             } else if (ID_MODE.matches("[\\w.$# ]+")) {
-                sql = "INSERT INTO " + TABLE + " (ID, " + cols + ") VALUES (" + ID_MODE + ", ?, ?, ?, ?, ?, ?)";
+                sql = "INSERT INTO " + TABLE + " (ID, " + cols + ") VALUES (" + ID_MODE + ", " + vals + ")";
             } else {
                 throw new IllegalArgumentException("Invalid BROKER_ID_MODE: '" + ID_MODE + "'");
             }
@@ -437,7 +457,8 @@ public class BrokerMasterLoader {
                     int i = 1;
                     if (bindId) ps.setLong(i++, nextId++);
                     setText(ps, i++, r.cps); setText(ps, i++, r.firm); setText(ps, i++, r.agent);
-                    setText(ps, i++, r.channel); setDate(ps, i++, r.added); setDate(ps, i, r.removed);
+                    setText(ps, i++, r.channel); setDate(ps, i++, r.added); setDate(ps, i++, r.removed);
+                    if (runTime != null) ps.setTimestamp(i, runTime);
                     ps.addBatch();
                 }
                 ps.executeBatch();

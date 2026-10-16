@@ -16,6 +16,7 @@ Built for the RHEL 6.10 app server: **Java 8** (already installed), no OS packag
 | Date Removed from PMPP | `REMOVED` |
 | PMPP - BDM, Filler, FIRM ID, Filler, PMPP Comments | Not loaded |
 | (none) | `ID`: see `BROKER_ID_MODE` |
+| (none) | `DATEMODIFIED`: run time, set only on inserted or changed rows (needs `BROKER_MODIFIED_COLUMN`) |
 
 Header matching ignores line breaks, extra spaces and case.
 
