@@ -11,11 +11,14 @@
         For every active user except the excluded codes (default PATKE01, CICAM01, KHARI01, TCHAR02):
             NBRE_TENTATIVE   = 3
             COMPTE_VEROUILLE = 1
+            DATE_FIN_VALIDE  = TRUNC(SYSDATE)  (date of the run, 00:00:00)
         Original values of every changed row are written to the backup CSV BEFORE commit.
         Refuses to run if the backup file already exists (would lose original values).
 
     Option 2 - Restore users
-        Reads the backup CSV and sets each changed column back to its original value.
+        Reads the backup CSV and sets each changed column back to its original value
+        (DATE_FIN_VALIDE goes back to NULL, or to its original date if it had one).
+        Backups made before DATE_FIN_VALIDE was added are still restored (date left as is).
         Only columns that option 1 actually changed are restored, and only if they all still
         hold the values option 1 set (rows changed since by someone else are skipped and reported).
         On success the backup file is renamed to *.restored_<timestamp>.csv.
@@ -126,6 +129,21 @@ function Get-Str($Reader, [int]$i) {
     if ($Reader.IsDBNull($i)) { '' } else { [string]$Reader.GetValue($i) }
 }
 
+$DateFmt = 'yyyy-MM-dd HH:mm:ss.fff'
+$Inv     = [System.Globalization.CultureInfo]::InvariantCulture
+
+function Get-DateStr($Reader, [int]$i) {
+    if ($Reader.IsDBNull($i)) { return '' }
+    $v = $Reader.GetValue($i)
+    if ($v -is [datetime]) { $v.ToString($DateFmt, $Inv) } else { [string]$v }
+}
+
+function New-DateParam([string]$Name, [string]$Value) {
+    $p = New-Object Oracle.ManagedDataAccess.Client.OracleParameter($Name, [Oracle.ManagedDataAccess.Client.OracleDbType]::TimeStamp)
+    $p.Value = if ($Value) { [datetime]::ParseExact($Value, $DateFmt, $Inv) } else { [DBNull]::Value }
+    $p
+}
+
 # --- Option 1: lock -----------------------------------------------------------
 function Invoke-Lock($Connection) {
     $tx = $Connection.BeginTransaction()
@@ -138,7 +156,8 @@ function Invoke-Lock($Connection) {
 
         # Lock candidate rows so nothing changes between read and update
         $sel = New-Cmd $Connection $tx @"
-SELECT CODE_UTILISATEUR, NOM_UTILISATEUR, PRENOM_UTILISATEUR, NBRE_TENTATIVE, COMPTE_VEROUILLE
+SELECT CODE_UTILISATEUR, NOM_UTILISATEUR, PRENOM_UTILISATEUR, NBRE_TENTATIVE, COMPTE_VEROUILLE,
+       DATE_FIN_VALIDE, TRUNC(SYSDATE)
   FROM $table
  WHERE $where
  ORDER BY CODE_UTILISATEUR
@@ -162,6 +181,9 @@ SELECT CODE_UTILISATEUR, NOM_UTILISATEUR, PRENOM_UTILISATEUR, NBRE_TENTATIVE, CO
                     ORIG_COMPTE_VEROUILLE = Get-Str $reader 4
                     NEW_COMPTE_VEROUILLE  = '1'
                     COMPTE_VEROUILLE_CHG  = 'Y'
+                    ORIG_DATE_FIN_VALIDE  = Get-DateStr $reader 5
+                    NEW_DATE_FIN_VALIDE   = Get-DateStr $reader 6
+                    DATE_FIN_VALIDE_CHG   = 'Y'
                     CHANGED_AT            = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
                 })
             }
@@ -173,7 +195,7 @@ SELECT CODE_UTILISATEUR, NOM_UTILISATEUR, PRENOM_UTILISATEUR, NBRE_TENTATIVE, CO
             $tx.Rollback(); return
         }
 
-        $rows | Format-Table CODE_UTILISATEUR, NOM_UTILISATEUR, PRENOM_UTILISATEUR, ORIG_NBRE_TENTATIVE, ORIG_COMPTE_VEROUILLE -AutoSize | Out-Host
+        $rows | Format-Table CODE_UTILISATEUR, NOM_UTILISATEUR, PRENOM_UTILISATEUR, ORIG_NBRE_TENTATIVE, ORIG_COMPTE_VEROUILLE, ORIG_DATE_FIN_VALIDE -AutoSize | Out-Host
         if (-not (Confirm-Action "Disable $($rows.Count) user(s) listed above?")) {
             Write-Host 'Cancelled. No changes made.'
             $tx.Rollback(); return
@@ -187,7 +209,7 @@ SELECT CODE_UTILISATEUR, NOM_UTILISATEUR, PRENOM_UTILISATEUR, NBRE_TENTATIVE, CO
 
         $upd = New-Cmd $Connection $tx @"
 UPDATE $table
-   SET NBRE_TENTATIVE = 3, COMPTE_VEROUILLE = 1
+   SET NBRE_TENTATIVE = 3, COMPTE_VEROUILLE = 1, DATE_FIN_VALIDE = TRUNC(SYSDATE)
  WHERE CODE_UTILISATEUR = :code AND NBRE_TENTATIVE = 0 AND COMPTE_VEROUILLE = 0
 "@
         $p = $upd.Parameters.Add('code', [Oracle.ManagedDataAccess.Client.OracleDbType]::Varchar2)
@@ -217,7 +239,7 @@ function Invoke-Restore($Connection) {
     $rows = @(Import-Csv -LiteralPath $BackupFile)
     if ($rows.Count -eq 0) { Write-Host 'Backup file is empty.'; return }
 
-    $rows | Format-Table CODE_UTILISATEUR, NOM_UTILISATEUR, PRENOM_UTILISATEUR, ORIG_NBRE_TENTATIVE, ORIG_COMPTE_VEROUILLE -AutoSize | Out-Host
+    $rows | Format-Table CODE_UTILISATEUR, NOM_UTILISATEUR, PRENOM_UTILISATEUR, ORIG_NBRE_TENTATIVE, ORIG_COMPTE_VEROUILLE, ORIG_DATE_FIN_VALIDE -AutoSize | Out-Host
     if (-not (Confirm-Action "Restore $($rows.Count) user(s) listed above to their original values?")) {
         Write-Host 'Cancelled. No changes made.'; return
     }
@@ -232,12 +254,16 @@ function Invoke-Restore($Connection) {
             # Oracle convert the string bind to the column type (NUMBER or CHAR) implicitly.
             if ($r.NBRE_TENTATIVE_CHG   -eq 'Y') { $set += 'NBRE_TENTATIVE = :origN' }
             if ($r.COMPTE_VEROUILLE_CHG -eq 'Y') { $set += 'COMPTE_VEROUILLE = :origC' }
+            # Older backups have no DATE_FIN_VALIDE columns: the date is then left as is
+            $chgD = $r.PSObject.Properties['DATE_FIN_VALIDE_CHG'] -and $r.DATE_FIN_VALIDE_CHG -eq 'Y'
+            if ($chgD) { $set += 'DATE_FIN_VALIDE = :origD' }
             if (-not $set) { continue }
 
             # Only touch the row if every changed column still holds the value option 1 set
             $cond = @()
             if ($r.NBRE_TENTATIVE_CHG   -eq 'Y') { $cond += 'NBRE_TENTATIVE = :newN' }
             if ($r.COMPTE_VEROUILLE_CHG -eq 'Y') { $cond += 'COMPTE_VEROUILLE = :newC' }
+            if ($chgD) { $cond += 'DATE_FIN_VALIDE = :newD' }
 
             $cmd = New-Cmd $Connection $tx "UPDATE $table SET $($set -join ', ') WHERE CODE_UTILISATEUR = :code AND $($cond -join ' AND ')"
             if ($r.NBRE_TENTATIVE_CHG -eq 'Y') {
@@ -247,6 +273,10 @@ function Invoke-Restore($Connection) {
             if ($r.COMPTE_VEROUILLE_CHG -eq 'Y') {
                 [void]$cmd.Parameters.Add('newC',  $r.NEW_COMPTE_VEROUILLE)
                 [void]$cmd.Parameters.Add('origC', $r.ORIG_COMPTE_VEROUILLE)
+            }
+            if ($chgD) {
+                [void]$cmd.Parameters.Add((New-DateParam 'newD'  $r.NEW_DATE_FIN_VALIDE))
+                [void]$cmd.Parameters.Add((New-DateParam 'origD' $r.ORIG_DATE_FIN_VALIDE))
             }
             [void]$cmd.Parameters.Add('code', $r.CODE_UTILISATEUR)
 

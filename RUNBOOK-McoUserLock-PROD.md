@@ -30,12 +30,13 @@ An **active user** is one where `NBRE_TENTATIVE = 0` **and** `COMPTE_VEROUILLE =
 | 4 | Lists the users and asks **Disable N user(s) listed above?** (default **No**) |
 | 5 | On **Yes**: asks you to type `MCOPROD` (capitals). Anything else cancels with no change |
 | 6 | Writes the original values to the backup CSV **before** saving any change |
-| 7 | Sets `NBRE_TENTATIVE = 3` and `COMPTE_VEROUILLE = 1` for each listed user |
+| 7 | Sets `NBRE_TENTATIVE = 3`, `COMPTE_VEROUILLE = 1` and `DATE_FIN_VALIDE` = date of the run at `00:00:00` (e.g. `2026-10-29 00:00:00.000`) for each listed user |
 | 8 | Commits only if the number of rows updated matches the number listed; otherwise rolls back and deletes the backup |
 
 ```sql
 -- Selection
-SELECT CODE_UTILISATEUR, NOM_UTILISATEUR, PRENOM_UTILISATEUR, NBRE_TENTATIVE, COMPTE_VEROUILLE
+SELECT CODE_UTILISATEUR, NOM_UTILISATEUR, PRENOM_UTILISATEUR, NBRE_TENTATIVE, COMPTE_VEROUILLE,
+       DATE_FIN_VALIDE, TRUNC(SYSDATE)
   FROM MCO001.UTILISATEUR
  WHERE NBRE_TENTATIVE = 0 AND COMPTE_VEROUILLE = 0
    AND UPPER(TRIM(CODE_UTILISATEUR)) NOT IN ('PATKE01', 'CICAM01', 'KHARI01', 'TCHAR02')
@@ -43,7 +44,7 @@ SELECT CODE_UTILISATEUR, NOM_UTILISATEUR, PRENOM_UTILISATEUR, NBRE_TENTATIVE, CO
 
 -- Update (per user)
 UPDATE MCO001.UTILISATEUR
-   SET NBRE_TENTATIVE = 3, COMPTE_VEROUILLE = 1
+   SET NBRE_TENTATIVE = 3, COMPTE_VEROUILLE = 1, DATE_FIN_VALIDE = TRUNC(SYSDATE)
  WHERE CODE_UTILISATEUR = :code AND NBRE_TENTATIVE = 0 AND COMPTE_VEROUILLE = 0;
 ```
 
@@ -53,15 +54,17 @@ UPDATE MCO001.UTILISATEUR
 |---|---|
 | 1 | Checks that the backup file exists |
 | 2 | Lists the users in the backup and asks **Restore N user(s) listed above to their original values?** (default **No**), then asks you to type `MCOPROD` |
-| 3 | For each user, sets `NBRE_TENTATIVE` and `COMPTE_VEROUILLE` back to their original values, **only if** they still hold `3` and `1` |
+| 3 | For each user, sets `NBRE_TENTATIVE`, `COMPTE_VEROUILLE` and `DATE_FIN_VALIDE` back to their original values (`DATE_FIN_VALIDE` → `NULL`, or the original date if the user had one), **only if** they still hold `3`, `1` and the lock date. Backups made before 29 Oct 2026 have no date columns: those users are restored and `DATE_FIN_VALIDE` is left as is |
 | 4 | Users changed by someone else since the lock are **skipped** and listed in a warning |
 | 5 | Commits all restores in one transaction |
 | 6 | Renames the backup to `UTILISATEUR_locked_users_PROD.restored_yyyyMMdd_HHmmss.csv` so it can't be applied twice |
 
 ```sql
 UPDATE MCO001.UTILISATEUR
-   SET NBRE_TENTATIVE = :origN, COMPTE_VEROUILLE = :origC
- WHERE CODE_UTILISATEUR = :code AND NBRE_TENTATIVE = 3 AND COMPTE_VEROUILLE = 1;
+   SET NBRE_TENTATIVE = :origN, COMPTE_VEROUILLE = :origC,
+       DATE_FIN_VALIDE = :origD           -- original value: NULL for most users
+ WHERE CODE_UTILISATEUR = :code AND NBRE_TENTATIVE = 3 AND COMPTE_VEROUILLE = 1
+   AND DATE_FIN_VALIDE = :newD;           -- lock date
 ```
 
 ### 1.3 Backup file format
@@ -76,6 +79,8 @@ CSV with a header row, UTF-8. One row per user changed by option 1.
 | `NBRE_TENTATIVE_CHG` | `Y` if the column was changed |
 | `ORIG_COMPTE_VEROUILLE` / `NEW_COMPTE_VEROUILLE` | Value before (`0`) / after (`1`) |
 | `COMPTE_VEROUILLE_CHG` | `Y` if the column was changed |
+| `ORIG_DATE_FIN_VALIDE` / `NEW_DATE_FIN_VALIDE` | Value before (usually empty = `NULL`) / after (lock date, e.g. `2026-10-29 00:00:00.000`) |
+| `DATE_FIN_VALIDE_CHG` | `Y` if the column was changed |
 | `CHANGED_AT` | Timestamp of the lock run |
 
 > **Do not edit, move or delete the backup file between option 1 and option 2.** It is the only record of the original values.
@@ -233,8 +238,10 @@ Select option (1/2):
 |---|---|---|
 | Option 1 | `SELECT COUNT(*) FROM MCO001.UTILISATEUR WHERE NBRE_TENTATIVE = 0 AND COMPTE_VEROUILLE = 0;` | Only the excluded users remain (≤ 4) |
 | Option 1 | `SELECT CODE_UTILISATEUR, NBRE_TENTATIVE, COMPTE_VEROUILLE FROM MCO001.UTILISATEUR WHERE CODE_UTILISATEUR IN ('PATKE01','CICAM01','KHARI01','TCHAR02');` | Unchanged |
+| Option 1 | `SELECT COUNT(*) FROM MCO001.UTILISATEUR WHERE DATE_FIN_VALIDE = TRUNC(SYSDATE) AND COMPTE_VEROUILLE = 1;` (same day as the run) | Equals the disabled count |
 | Option 1 | Backup file | Exists; row count (excluding header) equals the disabled count |
 | Option 2 | Same `COUNT(*)` as option 1 | Equals the pre-check count from 4.1 plus the excluded active users |
+| Option 2 | `SELECT COUNT(*) FROM MCO001.UTILISATEUR WHERE DATE_FIN_VALIDE = DATE 'yyyy-mm-dd';` with the lock date | `0`, unless some users already had that date before the lock |
 | Option 2 | Skipped users (if any) | Each one reviewed and fixed manually or confirmed as intended |
 | Option 2 | Backup file | Renamed to `*.restored_<timestamp>.csv` |
 
@@ -300,3 +307,4 @@ Select option (1/2):
 |---|---|
 | 2026-10-06 | Initial PROD version (`Set-McoUserLock-PROD.ps1`), from the tested MCODEV script: MCOPROD defaults, separate `.cred` and backup files, typed `MCOPROD` confirmation, red PRODUCTION banner |
 | 2026-10-29 | `TCHAR02` added to the excluded users |
+| 2026-10-29 | `DATE_FIN_VALIDE` set to the run date (`TRUNC(SYSDATE)`) on disable; restored to `NULL` (or its original date) on restore |
