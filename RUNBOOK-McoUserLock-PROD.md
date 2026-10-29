@@ -6,7 +6,7 @@
 | Purpose | Temporarily disable all active MCO users (option 1) and restore them to their original values afterwards (option 2) |
 | Database | Oracle 11g, host `172.20.3.16`, port `1526`, SID `MCOPROD` |
 | Table | `MCO001.UTILISATEUR` |
-| Excluded users (never changed) | `PATKE01`, `CICAM01`, `KHARI01` |
+| Excluded users (never changed) | `PATKE01`, `CICAM01`, `KHARI01`, `TCHAR02` |
 | Credential file | `MCOPROD.cred` (next to the script) |
 | Backup file | `UTILISATEUR_locked_users_PROD.csv` (next to the script) |
 | Runtime | Windows PowerShell 5.1 |
@@ -38,7 +38,7 @@ An **active user** is one where `NBRE_TENTATIVE = 0` **and** `COMPTE_VEROUILLE =
 SELECT CODE_UTILISATEUR, NOM_UTILISATEUR, PRENOM_UTILISATEUR, NBRE_TENTATIVE, COMPTE_VEROUILLE
   FROM MCO001.UTILISATEUR
  WHERE NBRE_TENTATIVE = 0 AND COMPTE_VEROUILLE = 0
-   AND UPPER(TRIM(CODE_UTILISATEUR)) NOT IN ('PATKE01', 'CICAM01', 'KHARI01')
+   AND UPPER(TRIM(CODE_UTILISATEUR)) NOT IN ('PATKE01', 'CICAM01', 'KHARI01', 'TCHAR02')
    FOR UPDATE;
 
 -- Update (per user)
@@ -133,7 +133,7 @@ The script handles this itself. On the first run it asks for the Oracle user nam
 | Tested in DEV | The same run (option 1 then option 2) completed successfully on MCODEV |
 | Rollback ready | Option 2 is the rollback. Know where the backup CSV will be written (script folder) |
 | No leftover backup | `Test-Path .\UTILISATEUR_locked_users_PROD.csv` must return `False` |
-| Expected volume | In SQL Developer: `SELECT COUNT(*) FROM MCO001.UTILISATEUR WHERE NBRE_TENTATIVE = 0 AND COMPTE_VEROUILLE = 0 AND CODE_UTILISATEUR NOT IN ('PATKE01','CICAM01','KHARI01');` — note the number |
+| Expected volume | In SQL Developer: `SELECT COUNT(*) FROM MCO001.UTILISATEUR WHERE NBRE_TENTATIVE = 0 AND COMPTE_VEROUILLE = 0 AND CODE_UTILISATEUR NOT IN ('PATKE01','CICAM01','KHARI01','TCHAR02');` — note the number |
 | Users informed | Users have been told they will be unable to log in |
 
 ### 4.2 Option 1 — Disable active users
@@ -201,7 +201,7 @@ Running the script with no `-Option` shows a menu:
 ```
   *** PRODUCTION ***
   MCO001.UTILISATEUR on 172.20.3.16:1526/MCOPROD
-  1) Disable all active users (except PATKE01, CICAM01, KHARI01)
+  1) Disable all active users (except PATKE01, CICAM01, KHARI01, TCHAR02)
   2) Restore users from C:\Users\<you>\Downloads\UTILISATEUR_locked_users_PROD.csv
 
 Select option (1/2):
@@ -217,7 +217,7 @@ Select option (1/2):
 | `-UserName` | *(prompt)* | Oracle user name used when creating the `.cred` file |
 | `-Credential` | *(from .cred)* | Pass a credential directly; bypasses the `.cred` file |
 | `-BackupFile` | `<script folder>\UTILISATEUR_locked_users_PROD.csv` | Where option 1 writes and option 2 reads the original values |
-| `-ExcludeUsers` | `PATKE01`, `CICAM01`, `KHARI01` | User codes never changed by option 1 |
+| `-ExcludeUsers` | `PATKE01`, `CICAM01`, `KHARI01`, `TCHAR02` | User codes never changed by option 1 |
 | `-DbHost` | `172.20.3.16` | Database host |
 | `-Port` | `1526` | Listener port |
 | `-Sid` | `MCOPROD` | SID, or the service name when used with `-UseServiceName` |
@@ -231,8 +231,8 @@ Select option (1/2):
 
 | After | Check (SQL Developer) | Pass criteria |
 |---|---|---|
-| Option 1 | `SELECT COUNT(*) FROM MCO001.UTILISATEUR WHERE NBRE_TENTATIVE = 0 AND COMPTE_VEROUILLE = 0;` | Only the excluded users remain (≤ 3) |
-| Option 1 | `SELECT CODE_UTILISATEUR, NBRE_TENTATIVE, COMPTE_VEROUILLE FROM MCO001.UTILISATEUR WHERE CODE_UTILISATEUR IN ('PATKE01','CICAM01','KHARI01');` | Unchanged |
+| Option 1 | `SELECT COUNT(*) FROM MCO001.UTILISATEUR WHERE NBRE_TENTATIVE = 0 AND COMPTE_VEROUILLE = 0;` | Only the excluded users remain (≤ 4) |
+| Option 1 | `SELECT CODE_UTILISATEUR, NBRE_TENTATIVE, COMPTE_VEROUILLE FROM MCO001.UTILISATEUR WHERE CODE_UTILISATEUR IN ('PATKE01','CICAM01','KHARI01','TCHAR02');` | Unchanged |
 | Option 1 | Backup file | Exists; row count (excluding header) equals the disabled count |
 | Option 2 | Same `COUNT(*)` as option 1 | Equals the pre-check count from 4.1 plus the excluded active users |
 | Option 2 | Skipped users (if any) | Each one reviewed and fixed manually or confirmed as intended |
@@ -299,3 +299,4 @@ Select option (1/2):
 | Date | Change |
 |---|---|
 | 2026-10-06 | Initial PROD version (`Set-McoUserLock-PROD.ps1`), from the tested MCODEV script: MCOPROD defaults, separate `.cred` and backup files, typed `MCOPROD` confirmation, red PRODUCTION banner |
+| 2026-10-29 | `TCHAR02` added to the excluded users |

@@ -8,7 +8,7 @@
 
     Option 1 - Disable active users
         Active user = NBRE_TENTATIVE = 0 AND COMPTE_VEROUILLE = 0.
-        For every active user except the excluded codes (default PATKE01, CICAM01, KHARI01):
+        For every active user except the excluded codes (default PATKE01, CICAM01, KHARI01, TCHAR02):
             NBRE_TENTATIVE   = 3
             COMPTE_VEROUILLE = 1
         Original values of every changed row are written to the backup CSV BEFORE commit.
@@ -55,7 +55,7 @@ param(
     [System.Management.Automation.PSCredential]$Credential,
     [string]$CredFile   = "$PSScriptRoot\MCOPROD.cred",
     [switch]$ResetCred,                            # re-prompt and overwrite the .cred file
-    [string[]]$ExcludeUsers = @('PATKE01', 'CICAM01', 'KHARI01'),
+    [string[]]$ExcludeUsers = @('PATKE01', 'CICAM01', 'KHARI01', 'TCHAR02'),
     [string]$BackupFile = "$PSScriptRoot\UTILISATEUR_locked_users_PROD.csv",
     [string]$DllPath    = "$PSScriptRoot\Oracle.ManagedDataAccess.dll"
 )
