@@ -1,9 +1,10 @@
 {
   "settings": {
-    "sshExe": "",
-    "sshDefaultUser": "",
-    "sshKeyPath": "",
-    "sshOptions": ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=15"],
+    "sshExe": "C:\\Program Files (x86)\\Micro Focus\\RUMBA\\System\\ssh.exe",
+    "sshDefaultUser": "patersk",
+    "sshKeyPath": "%USERPROFILE%\\.ssh\\id_dashboard",
+    "sshOptions": ["-n", "-T"],
+    "sshTimeoutSec": 120,
     "logDir": "logs"
   },
   "tasks": [
@@ -16,21 +17,28 @@
       "args": { "Name": "Kevin" }
     },
     {
+      "id": "zape01-uptime",
+      "name": "uc0275zape01 - hostname and uptime",
+      "type": "ssh",
+      "description": "Key-based SSH via the Micro Focus RUMBA client. No password prompt.",
+      "host": "uc0275zape01",
+      "command": "hostname && uptime"
+    },
+    {
+      "id": "zape01-disk",
+      "name": "uc0275zape01 - disk usage",
+      "type": "ssh",
+      "description": "Filesystem usage on the server.",
+      "host": "uc0275zape01",
+      "command": "df -h"
+    },
+    {
       "id": "agph-extract",
       "name": "AGPH Oracle Extract",
       "type": "powershell",
-      "description": "Runs Export-AgphData.ps1 in unattended mode. Needs Oracle.ManagedDataAccess.dll next to the script and DB access. Set UserName; a GUI password prompt appears at run time.",
+      "description": "Runs Export-AgphData.ps1 in unattended mode. Needs the script (in the repo root) and Oracle.ManagedDataAccess.dll beside it. Set UserName; a GUI password prompt appears at run time.",
       "script": "..\\Export-AgphData.ps1",
       "args": { "UserName": "REPLACE_ME", "SkipUpload": true }
-    },
-    {
-      "id": "disk-app01",
-      "name": "Disk usage on app01 (sample SSH)",
-      "type": "ssh",
-      "description": "Placeholder. Edit host/user and set up key-based auth (see README).",
-      "host": "app01.example.com",
-      "user": "deploy",
-      "command": "df -h /var && uptime"
     }
   ]
 }

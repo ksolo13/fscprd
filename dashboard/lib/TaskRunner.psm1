@@ -29,8 +29,9 @@ function ConvertTo-Arg {
 function Resolve-SshExe {
     param($Settings)
     $candidates = @()
-    if ($Settings -and $Settings.sshExe) { $candidates += [string]$Settings.sshExe }
+    if ($Settings -and $Settings.sshExe) { $candidates += [Environment]::ExpandEnvironmentVariables([string]$Settings.sshExe) }
     $candidates += (Join-Path $env:WINDIR 'System32\OpenSSH\ssh.exe')
+    $candidates += 'C:\Program Files (x86)\Micro Focus\RUMBA\System\ssh.exe'
     foreach ($c in $candidates) {
         if ($c -and (Test-Path -LiteralPath $c)) { return $c }
     }
@@ -87,16 +88,18 @@ function Build-TaskCommand {
                     elseif ($Settings -and $Settings.sshDefaultUser) { [string]$Settings.sshDefaultUser }
                     else { throw "ssh task '$($Task.id)' has no user (set it on the task or settings.sshDefaultUser)" }
 
-            $opts = if ($Settings -and $Settings.sshOptions) { @($Settings.sshOptions) }
-                    else { @('-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new', '-o', 'ConnectTimeout=15') }
+            # Defaults target the Micro Focus RUMBA client: -n = stdin from null, -T = no tty.
+            # (RUMBA is not OpenSSH; override settings.sshOptions if you switch clients.)
+            $opts = if ($Settings -and $Settings.sshOptions) { @($Settings.sshOptions) } else { @('-n', '-T') }
 
             $argList = @() + $opts
             $key = if ($Task.key) { [string]$Task.key }
                    elseif ($Settings -and $Settings.sshKeyPath) { [string]$Settings.sshKeyPath }
                    else { $null }
-            if ($key) { $argList += '-i'; $argList += (ConvertTo-Arg $key) }
-            if ($Task.port) { $argList += '-p'; $argList += [string]$Task.port }
-            $argList += "$user@$($Task.host)"
+            if ($key) { $argList += '-i'; $argList += (ConvertTo-Arg ([Environment]::ExpandEnvironmentVariables($key))) }
+            # RUMBA syntax for a non-default port is user@host#port
+            $target = if ($Task.port) { "$user@$($Task.host)#$($Task.port)" } else { "$user@$($Task.host)" }
+            $argList += $target
             $argList += (ConvertTo-Arg $Task.command)
 
             $argStr = ($argList -join ' ')
@@ -142,6 +145,7 @@ function Invoke-TaskProcess {
         $psi.UseShellExecute        = $false
         $psi.RedirectStandardOutput = $true
         $psi.RedirectStandardError  = $true
+        $psi.RedirectStandardInput  = $true
         $psi.CreateNoWindow         = $true
         $psi.WorkingDirectory       = $ScriptRoot
 
@@ -149,11 +153,31 @@ function Invoke-TaskProcess {
         $proc.StartInfo = $psi
         $Shared.Process = $proc
         [void]$proc.Start()
+        # Close stdin at once: a task that tries to prompt (e.g. ssh falling back to a
+        # password) gets EOF and fails instead of hanging the dashboard.
+        $proc.StandardInput.Close()
 
         # Drain stderr concurrently so a full stderr buffer can't deadlock stdout.
         $errTask = $proc.StandardError.ReadToEndAsync()
 
-        while ($null -ne ($line = $proc.StandardOutput.ReadLine())) { & $emit $line }
+        # Optional timeout: per-task timeoutSec, else settings.sshTimeoutSec for ssh tasks (0 = none).
+        $timeoutSec = 0
+        if ($Task.timeoutSec) { $timeoutSec = [int]$Task.timeoutSec }
+        elseif ($Task.type -eq 'ssh') { $timeoutSec = if ($Settings -and $Settings.sshTimeoutSec) { [int]$Settings.sshTimeoutSec } else { 120 } }
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        $timedOut = $false
+
+        while ($true) {
+            $readTask = $proc.StandardOutput.ReadLineAsync()
+            while (-not $readTask.Wait(250)) {
+                if ($timeoutSec -gt 0 -and $sw.Elapsed.TotalSeconds -gt $timeoutSec) { $timedOut = $true; break }
+            }
+            if ($timedOut) { try { $proc.Kill() } catch { }; break }
+            $line = $readTask.Result
+            if ($null -eq $line) { break }
+            & $emit $line
+        }
+        if ($timedOut) { & $emit ("[dashboard-error] timed out after {0}s - process killed" -f $timeoutSec) }
         $proc.WaitForExit()
 
         $err = $errTask.Result
@@ -161,9 +185,9 @@ function Invoke-TaskProcess {
             foreach ($l in ($err -split "`r?`n")) { if ($l.Length) { & $emit ("[stderr] " + $l) } }
         }
 
-        $Shared.ExitCode = $proc.ExitCode
+        $Shared.ExitCode = if ($timedOut) { 124 } else { $proc.ExitCode }
         & $emit ('')
-        & $emit ("# exit code: {0}" -f $proc.ExitCode)
+        & $emit ("# exit code: {0}" -f $Shared.ExitCode)
     }
     catch {
         try { $Shared.Queue.Enqueue("[dashboard-error] " + $_.Exception.Message) } catch { }

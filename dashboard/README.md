@@ -58,31 +58,40 @@ Tasks are data, not code. Two types:
 ```
 - `user`/`key`/`port` fall back to `settings.sshDefaultUser` / `sshKeyPath` if omitted.
 
-## SSH setup (important on this laptop)
+## SSH setup (Micro Focus RUMBA client, key-based)
 
-This machine has **no Windows OpenSSH** (`C:\Windows\System32\OpenSSH\ssh.exe`
-is absent). The only `ssh` on `PATH` is the **Micro Focus Reflection** client.
-Point the dashboard at whichever client you want via `settings.sshExe`:
+This laptop has no OpenSSH. The dashboard uses the **Micro Focus RUMBA** client
+(`C:\Program Files (x86)\Micro Focus\RUMBA\System\ssh.exe`), which is *not*
+OpenSSH: it uses `-n` (stdin from null) and `-T` (no tty) instead of
+`-o BatchMode`, and writes a non-default port as `user@host#port`. The defaults
+in `tasks.json` already match this.
 
-| Option | `settings.sshExe` | Notes |
-|---|---|---|
-| **Portable OpenSSH** (most predictable) | `bin\\ssh.exe` | Download the Win32-OpenSSH release `.zip` on a machine with internet, extract, copy `ssh.exe` into `dashboard\bin\`. No install. Standard syntax — the default `sshOptions` work as-is. |
-| **Existing Micro Focus client** (no download) | `""` (empty → uses `PATH`) or its full path | It is already approved on your laptop. Its option syntax may differ from OpenSSH — if SSH tasks error on startup, clear or adjust `settings.sshOptions`. |
+One-time setup:
 
-**Key-based auth (recommended)** — no passwords in sight:
 ```powershell
-ssh-keygen -t ed25519 -f "$env:USERPROFILE\.ssh\id_dashboard"   # if ssh-keygen is available
-# install the public key on each server:
-#   append the contents of id_dashboard.pub to ~/.ssh/authorized_keys on the server
-```
-Then set `settings.sshKeyPath` to the **private** key path. The default
-`sshOptions` use `BatchMode=yes` so a missing key fails fast instead of hanging
-the window on a password prompt.
+$rumba = 'C:\Program Files (x86)\Micro Focus\RUMBA\System'
 
-**Password auth fallback** — if keys are not permitted, carry PuTTY's portable
-`plink.exe` in `bin\`, add an `ssh` task whose `sshExe` is `bin\plink.exe`, and
-store the password with the credential helper (below) rather than on the
-command line.
+# 1. Generate a key (RUMBA writes the public key in SSH2 format)
+New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.ssh" | Out-Null
+& "$rumba\ssh-keygen.exe" -t rsa -b 3072 -f "$env:USERPROFILE\.ssh\id_dashboard" -N "" -C "dashboard-$env:USERNAME"
+
+# 2. Convert the public key to the one-line OpenSSH form servers expect
+$b64  = (Get-Content "$env:USERPROFILE\.ssh\id_dashboard.pub" | Where-Object { $_ -notmatch '^----' -and $_ -notmatch ':' }) -join ''
+$line = "ssh-rsa $b64 dashboard-$env:USERNAME"
+
+# 3. Install it on each server (asks for your password once)
+& "$rumba\ssh.exe" user@host "mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo '$line' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+
+# 4. Test: must print output with no password prompt
+& "$rumba\ssh.exe" -i "$env:USERPROFILE\.ssh\id_dashboard" -n -T user@host "hostname && uptime"
+```
+
+Safeguards: task stdin is closed (a password prompt gets EOF and fails instead
+of hanging) and ssh tasks time out after `settings.sshTimeoutSec` (default 120s;
+override per task with `timeoutSec`). A timeout reports exit code 124.
+
+To use a different client (e.g. portable OpenSSH in `bin\`), set `settings.sshExe`
+and replace `settings.sshOptions` with `["-o","BatchMode=yes"]`.
 
 ## Credentials (`lib\Credentials.psm1`)
 
