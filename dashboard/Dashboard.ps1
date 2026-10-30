@@ -16,16 +16,24 @@
     powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -File .\Dashboard.ps1
 #>
 [CmdletBinding()]
-param([string]$ConfigPath = "$PSScriptRoot\tasks.json")
+param([string]$ConfigPath)
 
 $ErrorActionPreference = 'Stop'
 
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Xaml
 
-$script:ScriptRoot = $PSScriptRoot
-$script:ModulePath = Join-Path $PSScriptRoot 'lib\TaskRunner.psm1'
-Import-Module $script:ModulePath -Force
-Import-Module (Join-Path $PSScriptRoot 'lib\Credentials.psm1') -Force
+# Resolve our own folder in the body: $PSScriptRoot is reliable here even when it
+# is empty during param-default binding (e.g. the ExecutionPolicy "Run once" path).
+$script:ScriptRoot =
+    if ($PSScriptRoot) { $PSScriptRoot }
+    elseif ($MyInvocation.MyCommand.Path) { Split-Path -Parent $MyInvocation.MyCommand.Path }
+    else { (Get-Location).Path }
+
+if (-not $ConfigPath) { $ConfigPath = Join-Path $script:ScriptRoot 'tasks.json' }
+
+$script:ModulePath = Join-Path $script:ScriptRoot 'lib\TaskRunner.psm1'
+Import-Module $script:ModulePath -Force -DisableNameChecking
+Import-Module (Join-Path $script:ScriptRoot 'lib\Credentials.psm1') -Force -DisableNameChecking
 
 # --- Load config -------------------------------------------------------------
 function Read-Config {
@@ -152,7 +160,7 @@ function Start-TaskRun($task) {
     $ps.Runspace = $rs
     [void]$ps.AddScript({
         param($Task, $Settings, $Shared, $ModulePath, $ScriptRoot)
-        Import-Module $ModulePath -Force
+        Import-Module $ModulePath -Force -DisableNameChecking
         Invoke-TaskProcess -Task $Task -Settings $Settings -Shared $Shared -ScriptRoot $ScriptRoot
     }).AddArgument($task).AddArgument($script:settings).AddArgument($shared).AddArgument($script:ModulePath).AddArgument($script:ScriptRoot)
 
